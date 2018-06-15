@@ -13,7 +13,9 @@
 #define FONA_RI  7
 #define ONEWIRE_PIN 10
 
-#include "PhoneNumber.h" //separate header file for phone number which defines PHONE_NUMBER.  You can comment this and define your own in the next line.
+/*  Separate header file for phone number which defines PHONE_NUMBER.  You can comment this and define your own in the next line.
+    Leave both commented out to prevent any SMS from being sent */
+//#include "PhoneNumber.h" 
 //#define PHONE_NUMBER "5555555555"
 
 //Define Parameters
@@ -23,7 +25,11 @@
 unsigned int time;
 unsigned int displaytime;
 
+/*state variable that need to be maintained across main loops*/
 boolean PowerOn=true;
+char status1[21]={0}; //Status Display Message Line 1
+char status2[21]={0}; //Status Display Message Line 2
+
 
 OneWire  ds(ONEWIRE_PIN);
 
@@ -54,9 +60,6 @@ void setup() {
     display.display();
     while (1);
   }
-  
-  Serial.print(F("FONA> "));
-  //fona.setGPRSNetworkSettings(F("wholesale"));
 
   ds.reset();
   ds.skip();
@@ -74,85 +77,129 @@ void loop() {
 
   time=millis();
   if ((time-displaytime)>=DISPLAY_INTERVAL){
-    updatescreen();
+    //check temperature here
+    updatescreen(); //modify to only run when power screen is on.
     displaytime+=DISPLAY_INTERVAL;
   }
 }
 
 void updatescreen(){
-  uint8_t x;
-  uint8_t y;
+  /*define display variables*/
+  float temperature;    //Temperature in F
+  float vbusVolts;      //current voltage of Vbus
+  char time[6]={0};     //Time to display
+  uint16_t battery;     //Battery Percentage
+  uint8_t signal;       //Signal Strength
+  boolean connection;   //Connection status
+  //status1,status2 declared earlier
+  
+  /*define input variables*/
+  uint16_t reading;     //reading from analogRead and raw temperature reading
+  char buffer[23];      //buffer to hold time string from Fona
+  uint8_t n;            //holds rssi level, network status
+
+  /*other variables*/
+  uint8_t x;            //used to calculate x positions
+  
+  reading=analogRead(5);
+  vbusVolts= ((float) reading*5.544)/1023.0;
+
+  //triggered when power status changes state
+  if (PowerOn==true && vbusVolts<4.3){
+    //display.ssd1306_command(0xAE);
+    PowerOn=false;
+    //String("Power Restored").toCharArray(status1,20);
+    memcpy(status1,"Power Lost",20);
+    #ifdef PHONE_NUMBER
+    fona.sendSMS(PHONE_NUMBER, "Power Lost");
+    #endif
+  }
+  if (PowerOn==false && vbusVolts>=4.3){
+    //display.ssd1306_command(0xAF);
+    PowerOn=true;
+    //String("Power Restored").toCharArray(status1,20);
+    memcpy(status1,"Power Restored",20);
+    #ifdef PHONE_NUMBER
+    fona.sendSMS(PHONE_NUMBER, "Power Restored");
+    #endif
+  }
+
   display.clearDisplay();
   display.setTextSize(1);
   
-  display.setCursor(0,24);
-  uint8_t n = fona.getNetworkStatus();
-  if (n == 0) display.print(F("Not Registered"));
-  if (n == 1) display.print(F("Registered"));
-  if (n == 2) display.print(F("Searching"));
-  if (n == 3) display.print(F("Denied"));
-  if (n == 4) display.print(F("Unknown"));
-  if (n == 5) display.print(F("Roaming"));
-
-  n = fona.getRSSI();
   display.setCursor(0,0);
-  display.print(F("RSSI:"));
-  if (n>0){
-    display.print("+");
+  connection = fona.getNetworkStatus();
+  if (connection == 1){
+    display.drawLine(0,4,1,6,WHITE);
+    display.drawLine(1,6,4,0,WHITE);
   }
-  display.print(n);
+  if (connection == 5) display.print(F("R"));
+  if (connection == 0 || connection == 2 || connection == 3 || connection == 4) display.print(F("X"));
 
-  uint16_t vbat;
-  fona.getBattPercent(&vbat);
-  if (vbat==100) x=103;
-  if ((vbat>9) && (vbat<100)) x=109;
-  if (vbat<=9) x=115;
-  x-=12;
-  display.setCursor(x,0);
-  display.print(vbat);
-  display.print("%");
+  signal = fona.getRSSI();
+  display.setCursor(12,0);
+  if (signal>0) display.drawPixel(5,6,WHITE);
+  if (signal>5) display.drawLine(7,6,8,4,WHITE);
+  if (signal>10) display.drawLine(9,6,10,2,WHITE);
+  if (signal>15) display.drawLine(11,6,12,0,WHITE);
 
-  display.drawRect(118, 0, 10, 7, WHITE);
-  display.drawRect(116,1,2,5,WHITE);
-  display.drawRect(117,2,2,3,BLACK);
-  if (vbat>=95) display.drawRect(117,2,2,3,WHITE);
-  if (vbat>=85) display.drawRect(119,1,1,5,WHITE);
-  if (vbat>=75) display.drawRect(120,1,1,5,WHITE);
-  if (vbat>=66) display.drawRect(121,1,1,5,WHITE);
-  if (vbat>=50) display.drawRect(122,1,1,5,WHITE);
-  if (vbat>=33) display.drawRect(123,1,1,5,WHITE);
-  if (vbat>=25) display.drawRect(124,1,1,5,WHITE);
-  if (vbat>=15) display.drawRect(125,1,1,5,WHITE);
-  if (vbat>=5) display.drawRect(126,1,1,5,WHITE);
+  fona.getTime(buffer, 23);
+  memcpy(time, buffer + 10, 5);
+  display.setCursor(18,0);
+  display.print(time);
 
+  if (PowerOn==true){
+    fona.getBattPercent(&battery);
+    if (battery==100) x=103;
+    if ((battery>9) && (battery<100)) x=109;
+    if (battery<=9) x=115;
+    x-=12;
+    display.setCursor(x,0);
+    display.print(battery);
+    display.print("%");
+  
+    display.drawRect(118, 0, 10, 7, WHITE);
+    display.drawRect(116,1,2,5,WHITE);
+    display.drawRect(117,2,2,3,BLACK);
+    if (battery>=95) display.drawRect(117,2,2,3,WHITE);
+    if (battery>=85) display.drawRect(119,1,1,5,WHITE);
+    if (battery>=75) display.drawRect(120,1,1,5,WHITE);
+    if (battery>=66) display.drawRect(121,1,1,5,WHITE);
+    if (battery>=50) display.drawRect(122,1,1,5,WHITE);
+    if (battery>=33) display.drawRect(123,1,1,5,WHITE);
+    if (battery>=25) display.drawRect(124,1,1,5,WHITE);
+    if (battery>=15) display.drawRect(125,1,1,5,WHITE);
+    if (battery>=5) display.drawRect(126,1,1,5,WHITE);
+  }
+  else{
+    display.setCursor(97,0);
+    display.print(vbusVolts,2);
+    display.print("V");
+  }
+  
+  //read temp data from scratchpad
   ds.reset();
   ds.skip();
   ds.write(0xBE);
-  uint16_t raw=0;
-  raw |= ds.read();
-  raw |= ds.read()<<8;
-  float temp = (float)raw / 16.0 * 1.8 + 32 ;
-  display.setCursor(0,16);
-  display.print(temp,1);
-  display.print(" ");
+  reading=0;
+  reading |= ds.read();
+  reading |= ds.read()<<8;
+  
+  //start next reading
   ds.reset();
   ds.skip();
   ds.write(0x44);
+  
+  //calculate temperature in degrees F
+  temperature = (float)reading / 16.0 * 1.8 + 32;
+  display.setCursor(50,0);
+  display.print(temperature,1);
+  display.print((char)247);
 
-  int volt=analogRead(5);
-  float voltage= ((float) volt*5.544)/1023.0;
-  display.print(voltage,2);
-
-  if (PowerOn==true && voltage<4.3){
-    display.ssd1306_command(0xAE);
-    PowerOn=false;
-    fona.sendSMS(PHONE_NUMBER, "Power Lost");
-  }
-  if (PowerOn==false && voltage>=4.3){
-    display.ssd1306_command(0xAF);
-    PowerOn=true;
-    fona.sendSMS(PHONE_NUMBER, "Power Restored");
-  }
+  display.setCursor(0,16);
+  display.print(status1);
+  display.setCursor(0,24);
+  display.print(status2);
   
   display.display();
 }
