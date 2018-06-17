@@ -5,7 +5,6 @@
 #include <SoftwareSerial.h>
 #include <OneWire.h>
 #include <math.h>
-#include <TimeLib.h>
 
 //Define Pins
 #define FONA_RX  9
@@ -13,6 +12,7 @@
 #define FONA_RST 4
 #define FONA_RI  7
 #define ONEWIRE_PIN 10
+//pin for button 11? Use pcint
 
 /*  Separate header file for phone number which defines PHONE_NUMBER.  You can comment this and define your own in the next line.
     Leave both commented out to prevent any SMS from being sent */
@@ -30,7 +30,6 @@ unsigned int displaytime;
 boolean PowerOn=true;
 char status1[18]={0}; //Status Display Message Line 1 (Timestamp)
 char status2[21]={0}; //Status Display Message Line 2
-
 
 OneWire  ds(ONEWIRE_PIN);
 
@@ -58,7 +57,6 @@ void setup() {
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
     Serial.println(F("Couldn't find FONA"));
-    display.display();
     while (1);
   }
 
@@ -86,23 +84,23 @@ void loop() {
 
 void updatescreen(){
   /*define display variables*/
-  float temperature;    //Temperature in F
+  int16_t temperature;    //Temperature in F
   float vbusVolts;      //current voltage of Vbus
   char time[6]={0};     //Time to display
   uint16_t battery;     //Battery Percentage
   uint8_t signal;       //Signal Strength
-  boolean connection;   //Connection status
+  uint8_t connection;   //Connection status
   //status1,status2 declared earlier
   
   /*define input variables*/
-  uint16_t reading;     //reading from analogRead and raw temperature reading
+  //uint16_t reading;     //reading from analogRead and raw temperature reading
   char datetime[23];      //buffer to hold time string from Fona
   uint8_t n;            //holds rssi level, network status
 
   /*other variables*/
   uint8_t x;            //used to calculate x positions
   
-  reading=analogRead(5);
+  uint16_t reading=analogRead(5);
   vbusVolts= ((float) reading*5.544)/1023.0;
 
   fona.getTime(datetime, 23);
@@ -182,30 +180,12 @@ void updatescreen(){
     display.print("V");
   }
   
-  //read temp data from scratchpad
-  ds.reset();
-  ds.skip();
-  ds.write(0xBE);
-  reading=0;
-  reading |= ds.read();
-  reading |= ds.read()<<8;
-  
-  //start next reading
-  ds.reset();
-  ds.skip();
-  ds.write(0x44);
-
-  time_t currenttime;
-  
-  //calculate temperature in degrees F
-  temperature = (float)reading / 16.0 * 1.8 + 32;
-  temperature=round(temperature);
+  temperature=GetTemp();
   x=64;
   if (temperature>=100 || temperature<=-10 ) x-=6;
   if (temperature<=9 && temperature>=0) x+=6;
-  
   display.setCursor(x,0);
-  display.print(temperature,0);
+  display.print(temperature);
   display.print((char)247);  //degrees
 
   display.setCursor(12,16);
@@ -215,3 +195,34 @@ void updatescreen(){
   
   display.display();
 }
+
+int GetTemp(){
+  int16_t reading=0;
+  //read temp data from scratchpad
+  ds.reset();
+  ds.skip();
+  ds.write(0xBE);
+  reading |= ds.read();
+  reading |= ds.read()<<8;
+
+  reading=reading>>3; //drop useless bits. leave one for rounding
+  
+  //convert temp to degree F
+  reading=reading*(9);
+  reading=reading+(160<<1);
+  reading=reading/(5);
+  reading=reading+reading%2; //round values up in magnitude
+  reading=reading>>1; 
+  
+  //start next reading
+  ds.reset();
+  ds.skip();
+  ds.write(0x44);
+  return reading;
+}
+
+
+
+
+
+
