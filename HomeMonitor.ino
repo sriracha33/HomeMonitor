@@ -1,10 +1,11 @@
-
 #include "Adafruit_FONA.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <SoftwareSerial.h>
 #include <OneWire.h>
+#include <math.h>
+#include <TimeLib.h>
 
 //Define Pins
 #define FONA_RX  9
@@ -27,7 +28,7 @@ unsigned int displaytime;
 
 /*state variable that need to be maintained across main loops*/
 boolean PowerOn=true;
-char status1[21]={0}; //Status Display Message Line 1
+char status1[18]={0}; //Status Display Message Line 1 (Timestamp)
 char status2[21]={0}; //Status Display Message Line 2
 
 
@@ -95,7 +96,7 @@ void updatescreen(){
   
   /*define input variables*/
   uint16_t reading;     //reading from analogRead and raw temperature reading
-  char buffer[23];      //buffer to hold time string from Fona
+  char datetime[23];      //buffer to hold time string from Fona
   uint8_t n;            //holds rssi level, network status
 
   /*other variables*/
@@ -104,12 +105,16 @@ void updatescreen(){
   reading=analogRead(5);
   vbusVolts= ((float) reading*5.544)/1023.0;
 
+  fona.getTime(datetime, 23);
+  memcpy(time, datetime + 10, 5);
+
   //triggered when power status changes state
   if (PowerOn==true && vbusVolts<4.3){
     //display.ssd1306_command(0xAE);
     PowerOn=false;
     //String("Power Restored").toCharArray(status1,20);
-    memcpy(status1,"Power Lost",20);
+    memcpy(status1,datetime+1,17);
+    memcpy(status2,"Power Lost",20);
     #ifdef PHONE_NUMBER
     fona.sendSMS(PHONE_NUMBER, "Power Lost");
     #endif
@@ -118,7 +123,8 @@ void updatescreen(){
     //display.ssd1306_command(0xAF);
     PowerOn=true;
     //String("Power Restored").toCharArray(status1,20);
-    memcpy(status1,"Power Restored",20);
+    memcpy(status1,datetime+1,17);
+    memcpy(status2,"Power Restored",20);
     #ifdef PHONE_NUMBER
     fona.sendSMS(PHONE_NUMBER, "Power Restored");
     #endif
@@ -126,6 +132,9 @@ void updatescreen(){
 
   display.clearDisplay();
   display.setTextSize(1);
+  
+  display.setCursor(19,0);
+  display.print(time);
   
   display.setCursor(0,0);
   connection = fona.getNetworkStatus();
@@ -139,17 +148,13 @@ void updatescreen(){
   signal = fona.getRSSI();
   display.setCursor(12,0);
   if (signal>0) display.drawPixel(5,6,WHITE);
-  if (signal>5) display.drawLine(7,6,8,4,WHITE);
-  if (signal>10) display.drawLine(9,6,10,2,WHITE);
-  if (signal>15) display.drawLine(11,6,12,0,WHITE);
-
-  fona.getTime(buffer, 23);
-  memcpy(time, buffer + 10, 5);
-  display.setCursor(18,0);
-  display.print(time);
+  if (signal>5) display.drawLine(7,6,7,4,WHITE);
+  if (signal>10) display.drawLine(9,6,9,2,WHITE);
+  if (signal>15) display.drawLine(11,6,11,0,WHITE);
 
   if (PowerOn==true){
     fona.getBattPercent(&battery);
+    battery=100;
     if (battery==100) x=103;
     if ((battery>9) && (battery<100)) x=109;
     if (battery<=9) x=115;
@@ -189,14 +194,21 @@ void updatescreen(){
   ds.reset();
   ds.skip();
   ds.write(0x44);
+
+  time_t currenttime;
   
   //calculate temperature in degrees F
   temperature = (float)reading / 16.0 * 1.8 + 32;
-  display.setCursor(50,0);
-  display.print(temperature,1);
-  display.print((char)247);
+  temperature=round(temperature);
+  x=64;
+  if (temperature>=100 || temperature<=-10 ) x-=6;
+  if (temperature<=9 && temperature>=0) x+=6;
+  
+  display.setCursor(x,0);
+  display.print(temperature,0);
+  display.print((char)247);  //degrees
 
-  display.setCursor(0,16);
+  display.setCursor(12,16);
   display.print(status1);
   display.setCursor(0,24);
   display.print(status2);
