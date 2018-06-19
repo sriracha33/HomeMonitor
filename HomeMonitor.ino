@@ -1,9 +1,10 @@
-#include "Adafruit_FONA.h"
+#include <Adafruit_FONA.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <SoftwareSerial.h>
 #include <OneWire.h>
+#include "Monitor.h"
 
 //Define Pins
 #define FONA_RX  9
@@ -38,6 +39,8 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);
 
 Adafruit_SSD1306 display(-1); //-1 because there is no reset pin
 
+Monitor monitor;
+
 void setup() {
   delay(1000); //a delay is needed here for the display to initialize when recovering from power outage (non-reset). Not sure how long.
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
@@ -49,7 +52,6 @@ void setup() {
   display.display();
 
   if (!Serial) delay(2000); //give you a chance to open the serial monitor before proceeding.
-  
   Serial.begin(115200);
   Serial.println(F("Initializing...."));
 
@@ -82,7 +84,6 @@ void loop() {
 void updatescreen(){
   /*define display variables*/
   int16_t temperature;  //Temperature in F
-  float vbusVolts;      //current voltage of Vbus
   char currentTime[6];  //Time to display
   char dateTime[18];    //Date and Time stamp
   uint8_t battery;     //Battery Percentage
@@ -93,10 +94,11 @@ void updatescreen(){
   /*other variables*/
   uint8_t x;            //used to calculate x positions for display
   
-  vbusVolts=GetVolts();
+  //vbusVolts=GetVolts();
+  monitor.vbusVolts=monitor.GetVolts();
   
   //triggered when power status changes state
-  if ((status & 0x01) && vbusVolts<4.3){
+  if ((status & 0x01) && monitor.vbusVolts<4.3){
     //display.ssd1306_command(0xAE);
     GetTime(currentTime,dateTime,status);
     status&=0xFE; //set power ok status to off
@@ -107,7 +109,7 @@ void updatescreen(){
     fona.sendSMS(PHONE_NUMBER, "Power Lost");
     #endif
   }
-  else if (!(status & 0x01) && vbusVolts>=4.3){
+  else if (!(status & 0x01) && monitor.vbusVolts>=4.3){
     //display.ssd1306_command(0xAF);
     status|=0x01; //set power ok status to off
     GetTime(currentTime,dateTime,status);
@@ -177,7 +179,7 @@ void updatescreen(){
   }
   else{
     display.setCursor(97,0);
-    display.print(vbusVolts,2);
+    display.print(monitor.vbusVolts,2);
     display.print("V");
   }
 
@@ -300,4 +302,5 @@ uint8_t GetSignal(byte statword){
     return 0;
   }
 }
+
 
