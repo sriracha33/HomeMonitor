@@ -39,7 +39,7 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);
 
 Adafruit_SSD1306 display(-1); //-1 because there is no reset pin
 
-Monitor monitor;
+Monitor monitor(&fona,&ds,&display);
 
 void setup() {
   delay(1000); //a delay is needed here for the display to initialize when recovering from power outage (non-reset). Not sure how long.
@@ -62,6 +62,7 @@ void setup() {
   }
 
   SetupTemp();
+  //Serial.println(monitor.GetNetworkStatus(0x01));
   
   updatescreen();
   time=millis();
@@ -87,8 +88,8 @@ void updatescreen(){
   char currentTime[6];  //Time to display
   char dateTime[18];    //Date and Time stamp
   uint8_t battery;     //Battery Percentage
-  uint8_t signal;       //Signal Strength
-  uint8_t connection;   //Connection status
+  //uint8_t signal;       //Signal Strength
+  //uint8_t connection;   //Connection status
   //status1,status2 declared earlier
 
   /*other variables*/
@@ -124,8 +125,8 @@ void updatescreen(){
   }
   
   temperature = GetTemp();
-  connection = GetNetworkStatus(status);
-  signal = GetSignal(status);
+  monitor.connection = monitor.GetNetworkStatus(status);
+  monitor.signal = monitor.GetSignal(status);
   battery=GetBattery(status);
   
   /*Display Code*/
@@ -140,19 +141,19 @@ void updatescreen(){
 
   //Display Connection Status
   display.setCursor(0,0);
-  if (connection == 1){
+  if (monitor.connection == 1){
     display.drawLine(0,4,1,6,WHITE);
     display.drawLine(1,6,4,0,WHITE);
   }
-  if (connection == 5) display.print(F("R"));
-  if (connection == 0 || connection == 2 || connection == 3 || connection == 4) display.print(F("X"));
+  if (monitor.connection == 5) display.print(F("R"));
+  if (monitor.connection == 0 || monitor.connection == 2 || monitor.connection == 3 || monitor.connection == 4) display.print(F("X"));
 
   //Display Signal Strength
   display.setCursor(12,0);
-  if (signal>0) display.drawPixel(5,6,WHITE);
-  if (signal>5) display.drawLine(7,6,7,4,WHITE);
-  if (signal>10) display.drawLine(9,6,9,2,WHITE);
-  if (signal>15) display.drawLine(11,6,11,0,WHITE);
+  if (monitor.signal>0) display.drawPixel(5,6,WHITE);
+  if (monitor.signal>5) display.drawLine(7,6,7,4,WHITE);
+  if (monitor.signal>10) display.drawLine(9,6,9,2,WHITE);
+  if (monitor.signal>15) display.drawLine(11,6,11,0,WHITE);
 
   //Display Battery Status (from Fona or ADC);
   if (battery){
@@ -274,15 +275,6 @@ void GetTime(char currentTime[],char dateTime[], byte statword){
   }
 }
 
-uint8_t GetNetworkStatus(byte statword){
-  if (statword & 0x01){
-    return fona.getNetworkStatus();
-  }
-  else{
-    return 0;
-  }
-}
-
 uint8_t GetBattery(byte statword){
   if (statword & 0x01){
     uint16_t batt;
@@ -294,13 +286,6 @@ uint8_t GetBattery(byte statword){
   }
 }
 
-uint8_t GetSignal(byte statword){
-  if (statword & 0x01){
-    return fona.getRSSI();
-  }
-  else{
-    return 0;
-  }
-}
+
 
 

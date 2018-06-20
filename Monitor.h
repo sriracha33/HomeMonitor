@@ -2,9 +2,16 @@
 #define Monitor_h
 
 #include "Arduino.h"
+#include <Adafruit_FONA.h>
+#include <OneWire.h>
+#include <Adafruit_SSD1306.h>
+
 class Monitor
-{
-    int var1;
+{ private:
+    Adafruit_FONA *_fona;
+    OneWire *_onewire;
+    Adafruit_SSD1306 *_display;
+    
   public:
     /*define display variables*/
     int16_t temperature;  //Temperature in F
@@ -16,7 +23,9 @@ class Monitor
     uint8_t connection;   //Connection status
     
     /*methods*/
-    Monitor();
+    Monitor(Adafruit_FONA *fona, OneWire *onewire, Adafruit_SSD1306 *display);
     float GetVolts();
+    uint8_t GetNetworkStatus(byte statword);
+    uint8_t GetSignal(byte statword);
 };
 #endif
