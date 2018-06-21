@@ -5,7 +5,9 @@ Monitor::Monitor(Adafruit_FONA *fona, OneWire *onewire, Adafruit_SSD1306 *displa
   _fona = fona;
   _onewire = onewire;
   _display = display;
-  
+  bitSet(status,GSM_ON);
+  bitSet(status,FONA_ON);
+  bitSet(status,DISPLAY_ON);
 }
 
 float Monitor::GetVolts() {
@@ -117,26 +119,6 @@ void Monitor::UpdateValues(){
   signal = GetSignal();
   battery = GetBattery();
   GetTime();
-  
-  //triggered when power status changes state
-  if (!bitRead(status,LOW_VOLTS) && vbusVolts<4.3){
-    //display.ssd1306_command(0xAE);
-    bitSet(status,LOW_VOLTS);//set power off status to on
-    memcpy(eventTime,dateTime,18);
-    memcpy(eventText,"Power Lost",20);
-    #ifdef PHONE_NUMBER
-    fona.sendSMS(PHONE_NUMBER, "Power Lost");
-    #endif
-  }
-  else if (bitRead(status,LOW_VOLTS) && vbusVolts>=4.3){
-    //display.ssd1306_command(0xAF);
-    bitClear(status,LOW_VOLTS); //set power off status to off
-    memcpy(eventTime,dateTime,18);
-    memcpy(eventText,"Power Restored",20);
-    #ifdef PHONE_NUMBER
-    fona.sendSMS(PHONE_NUMBER, "Power Restored");
-    #endif
-  }
 }
 
 void Monitor::UpdateStatus(){
@@ -144,19 +126,65 @@ void Monitor::UpdateStatus(){
   
   /*start with alarms*/
   //Detect if AC power is lost
-  //if (vbusVolts<VOLT_LIMIT && !bitRead(status,LOW_VOLTS)){bitSet(status,LOW_VOLTS);}
-  //else if (vbusVolts>VOLT_LIMIT && bitRead(status,LOW_VOLTS)){bitClear(status,LOW_VOLTS);}
+  if (vbusVolts<VOLT_LIMIT && !bitRead(status,LOW_VOLTS)){
+    bitSet(status,LOW_VOLTS);
+    _DelayCount = 0;
+  }
+  else if (vbusVolts>VOLT_LIMIT && bitRead(status,LOW_VOLTS)){
+    bitClear(status,LOW_VOLTS);
+    _DelayCount = -1;
+  }
   
   //Detect if Battery level is low. Use 0.2v deadband to prevent refiring.
   if (vbusVolts<BATTERY_LIMIT && !bitRead(status,LOW_BATTERY)){bitSet(status,LOW_BATTERY);}
   else if (vbusVolts>BATTERY_LIMIT+0.2 && bitRead(status,LOW_BATTERY)){bitClear(status,LOW_BATTERY);}
   
   //Detect if temperature is below limit
-  if (temperature<TEMP_LIMIT  && !bitRead(status,LOW_TEMP)){bitSet(status,LOW_TEMP);Serial.println("TEMP LOW");}
-  else if (temperature>TEMP_LIMIT+2  && bitRead(status,LOW_TEMP)){bitClear(status,LOW_TEMP);Serial.println("TEMP NORMAL");}
+  if (temperature<TEMP_LIMIT  && !bitRead(status,LOW_TEMP)){bitSet(status,LOW_TEMP);}
+  else if (temperature>TEMP_LIMIT+2  && bitRead(status,LOW_TEMP)){bitClear(status,LOW_TEMP);}
 
-  
+  if (_DelayCount>=0){
+    _DelayCount++;
+    char temp[21];
+    sprintf(temp,"Power Down in %d",30-_DelayCount);
+    UpdateStatusText(temp);
+  }
+  if (_DelayCount>=30){
+    #ifdef PHONE_NUMBER
+    //Sending Text
+    if (fona.sendSMS(PHONE_NUMBER, "Power Lost")){
+      //Successful
+    }
+    else{
+      //Failure
+    }
+    #endif
+    bitSet(status,POWERSAVE_MODE);
+    //Disable Fona
+    bitClear(status,FONA_ON);
+    bitClear(status,GSM_ON);
+    //display.ssd1306_command(0xAE);
+    bitClear(status,DISPLAY_ON);
+  }
 
+  return;
+  //this needs to go. Keepiing it for now for reference.
+  if (bitRead(lastStatus^status,LOW_VOLTS)){
+    if (bitRead(status,LOW_VOLTS)){
+      memcpy(eventTime,dateTime,18);
+      memcpy(eventText,"Power Lost",20);
+    }
+    else{
+      //display.ssd1306_command(0xAF);
+      bitClear(status,LOW_VOLTS); //set power off status to off
+      memcpy(eventTime,dateTime,18);
+      memcpy(eventText,"Power Restored",20);
+      #ifdef PHONE_NUMBER
+      fona.sendSMS(PHONE_NUMBER, "Power Restored");
+      #endif
+    }
+  }
+    
   
   
 }
@@ -226,6 +254,9 @@ void Monitor::UpdateDisplay(){
   _display->print(temperature);
   _display->print((char)247);  //degrees
 
+
+  _display->setCursor(0,8);
+  _display->print(statusText);
   //Display Event
   _display->setCursor(12,16);
   _display->print(eventTime);
@@ -233,6 +264,16 @@ void Monitor::UpdateDisplay(){
   _display->print(eventText);
 
   //Update Display
+  _display->display();
+}
+
+void Monitor::UpdateStatusText(char message[21]){
+  memset(statusText,0,21);
+  _display->setCursor(0,8);
+  _display->print(statusText);
+  strcpy(statusText,message);
+  _display->setCursor(0,8);
+  _display->print(statusText);
   _display->display();
 }
 

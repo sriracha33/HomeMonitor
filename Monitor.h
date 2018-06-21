@@ -23,7 +23,7 @@ class Monitor
     Adafruit_FONA *_fona;
     OneWire *_onewire;
     Adafruit_SSD1306 *_display;
-    int _DelayCount = 0;
+    int8_t _DelayCount = -1;
     
   public:
     /*define display variables*/
@@ -34,8 +34,9 @@ class Monitor
     uint8_t battery;        //Battery Percentage
     uint8_t signal;         //Signal Strength
     uint8_t connection;     //Connection status
-    char eventTime[18]={0}; //Status Display Message Line 1 (Timestamp)
-    char eventText[21]={0}; //Status Display Message Line 2
+    char statusText[21]={0};//Status Display Message
+    char eventTime[18]={0}; //Event Display Message Line 1 (Timestamp)
+    char eventText[21]={0}; //Event Display Message Line 2
     byte status=0;          //Status word.  See assignments in define statment
 
     
@@ -51,5 +52,6 @@ class Monitor
     void UpdateDisplay();
     void UpdateValues();
     void UpdateStatus();
+    void UpdateStatusText(char message[21]);
 };
 #endif
