@@ -16,7 +16,7 @@ float Monitor::GetVolts() {
 }
 
 uint8_t Monitor::GetBattery(){
-  if (!bitRead(status,LOW_VOLTS)){
+  if (bitRead(status,FONA_ON)){
     uint16_t batt;
     _fona->getBattPercent(&batt);  
     return batt;
@@ -27,7 +27,7 @@ uint8_t Monitor::GetBattery(){
 }
 
 uint8_t Monitor::GetNetworkStatus() {
-  if (!bitRead(status,LOW_VOLTS)) {
+  if (bitRead(status,FONA_ON)) {
     return _fona->getNetworkStatus();
   }
   else {
@@ -36,7 +36,7 @@ uint8_t Monitor::GetNetworkStatus() {
 }
 
 uint8_t Monitor::GetSignal() {
-  if (!bitRead(status,LOW_VOLTS)) {
+  if (bitRead(status,FONA_ON)) {
     return _fona->getRSSI();
   }
   else {
@@ -47,7 +47,7 @@ uint8_t Monitor::GetSignal() {
 void Monitor::GetTime(){
   memset(currentTime,0,6);
   memset(dateTime,0,18);
-  if (!bitRead(status,LOW_VOLTS)){
+  if (bitRead(status,FONA_ON)){
     char datetime[23];
     _fona->getTime(datetime, 23);
     memcpy(currentTime, datetime + 10, 5);
@@ -128,65 +128,99 @@ void Monitor::UpdateStatus(){
   //Detect if AC power is lost
   if (vbusVolts<VOLT_LIMIT && !bitRead(status,LOW_VOLTS)){
     bitSet(status,LOW_VOLTS);
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Power Lost",20);
     _DelayCount = 0;
   }
   else if (vbusVolts>VOLT_LIMIT && bitRead(status,LOW_VOLTS)){
     bitClear(status,LOW_VOLTS);
+    //bitClear(status,POWERSAVE_MODE);
+    //Enable Fona
+    if (!bitRead(status,FONA_ON)) FonaPowerOn();
+    GetTime();
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Power Restored",20);
+    if (!bitRead(status,DISPLAY_ON)){
+       bitSet(status,DISPLAY_ON);
+       _display->ssd1306_command(0xAF);
+    }
     _DelayCount = -1;
+    
+    //Sending Text
+    if bitRead(status,POWERSAVE_MODE){  
+      char message[50];
+      sprintf(message,"%s - %s",dateTime,"Power Restored");
+      SendSMS(message);
+    }
+
+    bitClear(status,POWERSAVE_MODE);
+    delay(1000);
   }
   
   //Detect if Battery level is low. Use 0.2v deadband to prevent refiring.
-  if (vbusVolts<BATTERY_LIMIT && !bitRead(status,LOW_BATTERY)){bitSet(status,LOW_BATTERY);}
-  else if (vbusVolts>BATTERY_LIMIT+0.2 && bitRead(status,LOW_BATTERY)){bitClear(status,LOW_BATTERY);}
+  if (vbusVolts<BATTERY_LIMIT && !bitRead(status,LOW_BATTERY)){
+    bitSet(status,LOW_BATTERY);
+    GetTime();
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Low Battery",20);
+    char message[50];
+    sprintf(message,"%s - %s",dateTime,"Low Battery");
+    SendSMS(message);
+    //add code for powering down
+  }
+  else if (vbusVolts>BATTERY_LIMIT+0.2 && bitRead(status,LOW_BATTERY)){
+    GetTime();
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Battery OK",20);
+    char message[50];
+    sprintf(message,"%s - %s",dateTime,"Battery OK");
+    SendSMS(message);
+    bitClear(status,LOW_BATTERY);
+    //add code for powering up.
+  }
   
   //Detect if temperature is below limit
-  if (temperature<TEMP_LIMIT  && !bitRead(status,LOW_TEMP)){bitSet(status,LOW_TEMP);}
-  else if (temperature>TEMP_LIMIT+2  && bitRead(status,LOW_TEMP)){bitClear(status,LOW_TEMP);}
-
-  if (_DelayCount>=0){
-    _DelayCount++;
-    char temp[21];
-    sprintf(temp,"Power Down in %d",30-_DelayCount);
-    UpdateStatusText(temp);
+  if (temperature<TEMP_LIMIT  && !bitRead(status,LOW_TEMP)){
+    GetTime();
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Low Temperature",20);
+    char message[50];
+    sprintf(message,"%s - %s",dateTime,"Low Temperature");
+    SendSMS(message);
+    bitSet(status,LOW_TEMP);
   }
-  if (_DelayCount>=30){
-    #ifdef PHONE_NUMBER
+  else if (temperature>TEMP_LIMIT+2  && bitRead(status,LOW_TEMP)){
+    GetTime();
+    memcpy(eventTime,dateTime,18);
+    memcpy(eventText,"Temperature OK",20);
+    char message[50];
+    sprintf(message,"%s - %s",dateTime,"Temperature OK");
+    SendSMS(message);
+    bitClear(status,LOW_TEMP);
+  }
+  char temp[21]={};
+  
+  if (_DelayCount>=0 && _DelayCount<30){
+    _DelayCount++;
+    sprintf(temp,"Power Down in %d",30-_DelayCount);
+  }
+  
+  UpdateStatusText(temp);
+  
+  if (_DelayCount==30){
+    _DelayCount++;
     //Sending Text
-    if (fona.sendSMS(PHONE_NUMBER, "Power Lost")){
-      //Successful
-    }
-    else{
-      //Failure
-    }
-    #endif
+    char message[50];
+    sprintf(message,"%s - %s",dateTime,"Power Lost");
+    SendSMS(message);
     bitSet(status,POWERSAVE_MODE);
-    //Disable Fona
-    bitClear(status,FONA_ON);
-    bitClear(status,GSM_ON);
-    //display.ssd1306_command(0xAE);
+    if (bitRead(status,FONA_ON)) FonaPowerOff();
+    _display->ssd1306_command(0xAE);
     bitClear(status,DISPLAY_ON);
   }
-
-  return;
-  //this needs to go. Keepiing it for now for reference.
-  if (bitRead(lastStatus^status,LOW_VOLTS)){
-    if (bitRead(status,LOW_VOLTS)){
-      memcpy(eventTime,dateTime,18);
-      memcpy(eventText,"Power Lost",20);
-    }
-    else{
-      //display.ssd1306_command(0xAF);
-      bitClear(status,LOW_VOLTS); //set power off status to off
-      memcpy(eventTime,dateTime,18);
-      memcpy(eventText,"Power Restored",20);
-      #ifdef PHONE_NUMBER
-      fona.sendSMS(PHONE_NUMBER, "Power Restored");
-      #endif
-    }
-  }
-    
   
   
+  return; 
 }
 
 void Monitor::UpdateDisplay(){
@@ -268,12 +302,49 @@ void Monitor::UpdateDisplay(){
 }
 
 void Monitor::UpdateStatusText(char message[21]){
-  memset(statusText,0,21);
-  _display->setCursor(0,8);
-  _display->print(statusText);
+  _display->fillRect(0,8,127,8,BLACK);
   strcpy(statusText,message);
   _display->setCursor(0,8);
   _display->print(statusText);
   _display->display();
 }
+
+//Power Down Procedure
+void Monitor::FonaPowerOff(){
+  char temp[21]={}; 
+  delay(1000);
+  bitClear(status,FONA_ON);
+  bitClear(status,GSM_ON);
+  sprintf(temp,"Powering Off Fona");
+  UpdateStatusText(temp);
+  delay(2000);
+}
+
+void Monitor::FonaPowerOn(){
+  char temp[21]={};
+  //UpdateStatusText(temp);
+  //delay(1000);
+  //temp="Powering On Fona";
+  bitSet(status,FONA_ON);
+  bitSet(status,GSM_ON);
+  sprintf(temp,"Powering On Fona");
+  UpdateStatusText(temp);
+  delay(1000);
+}
+
+void Monitor::SendSMS(char message[50]){
+  #ifdef PHONE_NUMBER
+    if (_fona->sendSMS(PHONE_NUMBER, message)){
+      //Successful
+    }
+    else{
+      //Failure
+    }
+  #endif
+}
+
+
+
+
+
 

@@ -9,7 +9,7 @@
 #define DISPLAY_ON 5
 #define POWERSAVE_MODE 7
 
-#define TEMP_LIMIT 79
+#define TEMP_LIMIT 38
 #define VOLT_LIMIT 4.3
 #define BATTERY_LIMIT 3.5
 
@@ -17,6 +17,11 @@
 #include <Adafruit_FONA.h>
 #include <OneWire.h>
 #include <Adafruit_SSD1306.h>
+
+/*  Separate header file for phone number which defines PHONE_NUMBER.  You can comment this and define your own in the next line.
+    Leave both commented out to prevent any SMS from being sent */
+#include "PhoneNumber.h" 
+//#define PHONE_NUMBER "5555555555" 
 
 class Monitor
 { private:
@@ -53,5 +58,8 @@ class Monitor
     void UpdateValues();
     void UpdateStatus();
     void UpdateStatusText(char message[21]);
+    void FonaPowerOff();
+    void FonaPowerOn();
+    void SendSMS(char message[50]);
 };
 #endif

@@ -14,20 +14,12 @@
 #define ONEWIRE_PIN 10
 //pin for button 11? Use pcint
 
-/*  Separate header file for phone number which defines PHONE_NUMBER.  You can comment this and define your own in the next line.
-    Leave both commented out to prevent any SMS from being sent */
-//#include "PhoneNumber.h" 
-//#define PHONE_NUMBER "5555555555"
-
 //Define Parameters
 #define DISPLAY_INTERVAL  1000
 
 //timer variables
 unsigned int time;
 unsigned int displaytime;
-
-/*state variable that need to be maintained across main loops*/
-//byte status=0b00000001; //Status word.  Bit0=PowerOn
 
 OneWire  ds(ONEWIRE_PIN);
 
@@ -77,6 +69,12 @@ void loop() {
   if bitRead(monitor.status,POWERSAVE_MODE){
     monitor.UpdateValues();
     monitor.UpdateStatus();
+
+    //if after updating, power is on, resume display counter.
+    if (!bitRead(monitor.status,POWERSAVE_MODE)){
+      time=millis();
+      displaytime=time;
+    }
   }
   
   //if Power is On
